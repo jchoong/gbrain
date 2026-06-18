@@ -696,6 +696,11 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   // reverse proxies / tunnels; default to localhost for dev.
   const issuerUrl = new URL(publicUrl || `http://localhost:${port}`);
 
+  // myhq: advertise the protected-resource metadata URL in 401 WWW-Authenticate
+  // challenges (RFC 9728 / MCP auth spec) so strict clients auto-discover the
+  // auth server instead of needing the well-known path hardcoded.
+  const resourceMetadataUrl = new URL('/.well-known/oauth-protected-resource', issuerUrl).href;
+
   // F9: cookie `secure` flag honors both the request's TLS state (req.secure
   // is set when express trust-proxy lands an X-Forwarded-Proto: https) AND
   // the operator's declared issuer protocol (so a Cloudflare-tunnel deploy
@@ -1434,7 +1439,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
     res.status(405).json({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null });
   });
 
-  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider }), async (req: Request, res: Response) => {
+  app.post('/mcp', requireBearerAuth({ verifier: oauthProvider, resourceMetadataUrl }), async (req: Request, res: Response) => {
     const startTime = Date.now();
     const authInfo = (req as any).auth as AuthInfo;
 
@@ -1777,7 +1782,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
   app.post(
     '/ingest',
     ingestRateLimiter,
-    requireBearerAuth({ verifier: oauthProvider, requiredScopes: ['write'] }),
+    requireBearerAuth({ verifier: oauthProvider, requiredScopes: ['write'], resourceMetadataUrl }),
     express.raw({ type: '*/*', limit: ingestMaxBytes }),
     async (req: Request, res: Response) => {
       const startTime = Date.now();
